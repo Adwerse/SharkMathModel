@@ -31,3 +31,26 @@ Estimated probability of encountering sharks: 0.676
 ```
 
 Можно также импортировать функцию `shark_probability` из файла `shark_mvp.py` в другие скрипты и получать значение напрямую.
+
+## HTTP-сервер для фронтенда
+
+Чтобы фронт мог запрашивать вероятность по сети, запустите встроенный сервер:
+
+```powershell
+python shark_mvp.py --server --host 0.0.0.0 --port 8000
+```
+
+После запуска будет доступен эндпоинт `GET /probability`.
+Пример запроса:
+
+```
+GET http://localhost:8000/probability?lat=-26.5&lon=153
+```
+
+Ответ приходит в JSON-формате:
+
+```json
+{"probability": 0.515}
+```
+
+Заголовок `Access-Control-Allow-Origin: *` уже выставлен, поэтому фронтенд может делать запросы напрямую из браузера.

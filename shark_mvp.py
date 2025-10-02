@@ -1,8 +1,13 @@
 from __future__ import annotations
 
+import argparse
+import json
 import math
 from dataclasses import dataclass
 from typing import Iterable
+
+from http.server import BaseHTTPRequestHandler, HTTPServer
+from urllib.parse import parse_qs, urlparse
 
 
 @dataclass(frozen=True)
@@ -139,17 +144,91 @@ def shark_probability(lat: float, lon: float) -> float:
     return round(probability, 3)
 
 
-if __name__ == "__main__":
+class SharkRequestHandler(BaseHTTPRequestHandler):
+    """Обработчик HTTP-запросов, возвращающий вероятность в формате JSON."""
+
+    def do_GET(self) -> None:  # noqa: N802 (сигнатура фиксирована HTTPServer)
+        parsed = urlparse(self.path)
+        if parsed.path != "/probability":
+            self._send_json(404, {"error": "not_found"})
+            return
+
+        params = parse_qs(parsed.query)
+        try:
+            lat = float(params.get("lat", [])[0])
+            lon = float(params.get("lon", [])[0])
+        except (IndexError, ValueError):
+            self._send_json(400, {"error": "lat and lon query params are required floats"})
+            return
+
+        try:
+            probability = shark_probability(lat, lon)
+        except ValueError as exc:
+            self._send_json(400, {"error": str(exc)})
+            return
+
+        self._send_json(200, {"probability": probability})
+
+    def log_message(self, format: str, *args: object) -> None:  # noqa: A003 (совместимость с базовым классом)
+        """Подавляем стандартный вывод сервера, чтобы не шуметь в консоли."""
+
+        return
+
+    def _send_json(self, status: int, payload: dict[str, object]) -> None:
+        body = json.dumps(payload).encode("utf-8")
+        self.send_response(status)
+        self.send_header("Content-Type", "application/json")
+        self.send_header("Access-Control-Allow-Origin", "*")
+        self.send_header("Content-Length", str(len(body)))
+        self.end_headers()
+        self.wfile.write(body)
+
+
+def run_server(host: str = "0.0.0.0", port: int = 8000) -> None:
+    """Запустить HTTP-сервер для получения вероятности по GET-запросам."""
+
+    server = HTTPServer((host, port), SharkRequestHandler)
+    print(f"Shark probability server listening on http://{host}:{port}")
+    print("Send GET /probability?lat=<value>&lon=<value>")
+    try:
+        server.serve_forever()
+    except KeyboardInterrupt:
+        print("\nServer stopped.")
+    finally:
+        server.server_close()
+
+
+def run_cli() -> None:
+    """Интерактивный ввод координат через консоль."""
+
     print("Shark presence probability estimator")
     try:
         user_lat = float(input("Enter latitude (-90 to 90): ").strip())
         user_lon = float(input("Enter longitude (-180 to 180): ").strip())
     except ValueError:
         print("Invalid input. Please enter numeric values.")
+        return
+
+    try:
+        probability = shark_probability(user_lat, user_lon)
+    except ValueError as exc:
+        print(f"Error: {exc}")
     else:
-        try:
-            probability = shark_probability(user_lat, user_lon)
-        except ValueError as exc:
-            print(f"Error: {exc}")
-        else:
-            print(f"Estimated probability of encountering sharks: {probability:.3f}")
+        print(f"Estimated probability of encountering sharks: {probability:.3f}")
+
+
+def main() -> None:
+    parser = argparse.ArgumentParser(description="Эвристический расчёт вероятности встречи акул.")
+    parser.add_argument("--server", action="store_true", help="Запустить HTTP-сервер для фронтенда.")
+    parser.add_argument("--host", default="0.0.0.0", help="Хост, на котором слушает сервер (по умолчанию 0.0.0.0).")
+    parser.add_argument("--port", type=int, default=8000, help="Порт сервера (по умолчанию 8000).")
+    args = parser.parse_args()
+
+    if args.server:
+        run_server(args.host, args.port)
+    else:
+        run_cli()
+
+
+if __name__ == "__main__":
+    main()
