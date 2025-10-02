@@ -1,5 +1,3 @@
-"""Minimal heuristic-based shark probability estimator."""
-
 from __future__ import annotations
 
 import math
@@ -36,13 +34,13 @@ class LandRegion:
     penalty: float
 
 
-# Rough bounding boxes for continental interiors (used to dampen predictions on land).
+# Грубые рамки для континентальных внутренних областей (подавляют вероятность на суше).
 LAND_INTERIORS: tuple[LandRegion, ...] = (
-    LandRegion(25.0, 50.0, -110.0, -90.0, 0.35),  # Central USA
-    LandRegion(-20.0, 5.0, -70.0, -50.0, 0.40),   # Amazon basin interior
-    LandRegion(-10.0, 20.0, 10.0, 35.0, 0.45),    # Central Africa
-    LandRegion(30.0, 60.0, 40.0, 120.0, 0.50),    # Eurasian interior
-    LandRegion(-35.0, -15.0, 120.0, 135.0, 0.40), # Australian interior
+    LandRegion(25.0, 50.0, -110.0, -90.0, 0.35),   # Центральные штаты США
+    LandRegion(-20.0, 5.0, -70.0, -50.0, 0.40),    # Внутренняя часть бассейна Амазонки
+    LandRegion(-10.0, 20.0, 10.0, 35.0, 0.45),     # Центральная Африка
+    LandRegion(30.0, 60.0, 40.0, 120.0, 0.50),     # Евразийский континентальный массив
+    LandRegion(-35.0, -15.0, 120.0, 145.0, 0.65),  # Центральная и западная Австралия (сильный штраф)
 )
 
 
@@ -51,14 +49,14 @@ def clamp(value: float, low: float = 0.0, high: float = 1.0) -> float:
 
 
 def _wrap_longitude(lon: float) -> float:
-    """Wrap longitude into the [-180, 180) range."""
+    """Привести долготу к диапазону [-180, 180)."""
     wrapped = (lon + 180.0) % 360.0 - 180.0
-    # Handle the edge case where lon == 180 exactly.
+    # Обработать частный случай, когда долгота ровно 180.
     return wrapped if wrapped != -180.0 else 180.0
 
 
 def _haversine_distance_km(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
-    """Approximate great-circle distance between two points on Earth."""
+    """Приблизительное расстояние по дуге между двумя точками на Земле."""
     radius_earth_km = 6371.0
     d_lat = math.radians(lat2 - lat1)
     d_lon = math.radians(lon2 - lon1)
@@ -74,21 +72,21 @@ def _haversine_distance_km(lat1: float, lon1: float, lat2: float, lon2: float) -
 
 
 def _lat_factor(lat: float) -> float:
-    """Favor latitudes near the tropics and temperate coastal waters."""
-    # Cosine squared declines smoothly from equator towards poles.
+    """Отдаёт предпочтение широтам в тропиках и тёплых прибрежных водах."""
+    # Квадрат косинуса плавно уменьшается от экватора к полюсам.
     equatorial_bias = math.cos(math.radians(lat)) ** 2
-    # Additional boost inside the tropics (|lat| <= 30°).
+    # Дополнительное усиление внутри тропиков (|lat| <= 30°).
     tropic_span = clamp(1.0 - abs(lat) / 30.0)
-    # Mild penalty for extreme poles.
+    # Небольшое штрафование за экстремальные широты у полюсов.
     polar_penalty = clamp((abs(lat) - 50.0) / 40.0)
     return clamp(0.6 * equatorial_bias + 0.4 * tropic_span - 0.3 * polar_penalty, 0.0, 1.0)
 
 
 def _current_factor(lat: float, lon: float) -> float:
-    """Heuristic for warm currents and productive waters."""
+    """Эвристика для тёплых течений и продуктивных вод."""
     lon_rad = math.radians(_wrap_longitude(lon))
     lat_rad = math.radians(lat)
-    # Combine sinusoidal patterns to emulate known warm currents.
+    # Комбинируем синусоидальные паттерны, чтобы приблизить известные тёплые течения.
     warm_current = 0.5 * (1.0 + math.sin(lon_rad * 1.5) * math.cos(lat_rad))
     upwelling = 0.5 * (1.0 + math.cos(lon_rad * 0.7 + math.sin(lat_rad)))
     return clamp(0.6 * warm_current + 0.4 * upwelling, 0.0, 1.0)
@@ -112,17 +110,18 @@ def _land_penalty(lat: float, lon: float, regions: Iterable[LandRegion]) -> floa
 
 
 def shark_probability(lat: float, lon: float) -> float:
-    """Estimate the likelihood of encountering sharks at the given coordinates.
+    """Оценить вероятность встречи акул в заданных координатах.
 
-    The heuristic prioritizes tropical and temperate waters, emphasizes known
-    global hotspots, and dampens probabilities over large continental interiors.
+    Функция отдаёт приоритет тропическим и тёплым умеренным водам,
+    подчёркивает глобальные очаги активности и снижает вероятность для
+    широких континентальных областей.
 
-    Args:
-        lat: Latitude in decimal degrees (-90 to 90).
-        lon: Longitude in decimal degrees (-180 to 180).
+    Аргументы:
+        lat: Широта в десятичных градусах (от -90 до 90).
+        lon: Долгота в десятичных градусах (от -180 до 180).
 
-    Returns:
-        Probability between 0 and 1, rounded to three decimals.
+    Возвращает:
+        Вероятность в диапазоне от 0 до 1, округлённую до трёх знаков.
     """
     if not math.isfinite(lat) or not math.isfinite(lon):
         raise ValueError("Latitude and longitude must be finite numbers.")
