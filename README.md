@@ -50,7 +50,7 @@ GET http://localhost:8000/probability?lat=-26.5&lon=153
 Ответ приходит в JSON-формате:
 
 ```json
-{"probability": 0.515}
+{"lat": -26.5, "lon": 153.0, "probability": 0.515}
 ```
 
 Заголовок `Access-Control-Allow-Origin: *` уже выставлен, поэтому фронтенд может делать запросы напрямую из браузера.

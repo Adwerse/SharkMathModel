@@ -162,12 +162,14 @@ class SharkRequestHandler(BaseHTTPRequestHandler):
             return
 
         try:
+            cleaned_lat = clamp(lat, -90.0, 90.0)
+            cleaned_lon = _wrap_longitude(lon)
             probability = shark_probability(lat, lon)
         except ValueError as exc:
             self._send_json(400, {"error": str(exc)})
             return
 
-        self._send_json(200, {"probability": probability})
+        self._send_json(200, {"lat": cleaned_lat, "lon": cleaned_lon, "probability": probability})
 
     def log_message(self, format: str, *args: object) -> None:  # noqa: A003 (совместимость с базовым классом)
         """Подавляем стандартный вывод сервера, чтобы не шуметь в консоли."""
